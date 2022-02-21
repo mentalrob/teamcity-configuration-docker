@@ -1,0 +1,62 @@
+version: '3'
+
+services:
+  server:
+    image: jetbrains/teamcity-server:latest
+    volumes:
+      - "./teamcity-data:/data/teamcity_server/datadir"
+      - "./teamcity-logs:/opt/teamcity/logs"
+    ports:
+      - "9090:8111"
+    env_file: .env
+  agent:
+    build: ./agents/docker-agent
+    privileged: true
+    volumes:
+        - ./teamcity-agent-data:/data/teamcity_agent/conf
+        - //var/run/docker.sock:/var/run/docker.sock
+        - ./buildagent-temp:/opt/buildagent/temp/
+    environment:
+        - SERVER_URL=http://server:8111
+    links:
+        - server
+  postgres:
+    image: postgres:10.4
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./database:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+  mssql:
+    image: mcr.microsoft.com/mssql/server
+    environment:
+      SA_PASSWORD: ${MSSQL_PASSWORD}
+      ACCEPT_EULA: "Y"
+    volumes:
+      - ./mssql-database:/var/opt/mssql/data
+    ports:
+      - 1402:1433
+  octopus_server:
+    image: octopusdeploy/octopusdeploy:2021.2
+    privileged: true
+    environment:
+      ACCEPT_EULA: "Y"
+      DB_CONNECTION_STRING: "Server=mssql,1433;Database=OctopusDeploy;User=sa;Password=${MSSQL_PASSWORD}"
+      ADMIN_USERNAME: ${OCTOPUS_USERNAME}
+      ADMIN_PASSWORD: ${OCTOPUS_PASSWORD}
+      MASTER_KEY: ${OCTOPUS_MASTER_KEY}
+      ADMIN_EMAIL: "admin@admin.com"
+    volumes:
+      - ./octopus/artifacts:/artifacts
+      - ./octopus/cache:/cache
+      - ./octopus/import:/import
+      - ./octopus/repository:/repository
+      - ./octopus/taskLogs:/taskLogs
+    ports:
+      - 8081:8080
+      - 10943:10943
+    depends_on:
+      - mssql
